@@ -6,11 +6,11 @@
     <title>Nookbot Filter Dashboard</title>
     <style>
         /* CSS Variables */
-        :root { --green: #2ECC71; --bg: #f5f7fa; --text: #2c3e50; --bell: #F1C40F; }
+        :root { --green: #2ECC71; --bg: #f5f7fa; --text: #2c3e50; --bell: #F1C40F; --purple: #9b59b6; }
         body { background: var(--bg); font-family: 'Segoe UI', system-ui, sans-serif; padding: 20px; color: var(--text); margin: 0; }
         
         /* Layout */
-        .container { max-width: 1100px; margin: 20px auto; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        .container { max-width: 1200px; margin: 20px auto; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
         h1 { display: flex; align-items: center; gap: 10px; color: #1a252f; margin-top: 0; }
         
         /* Controls */
@@ -38,12 +38,13 @@
         td { padding: 12px 15px; border-bottom: 1px solid #edf2f7; font-size: 14px; word-wrap: break-word; }
         tr:hover { background-color: #f0fff4; }
         
-        .word-cell { width: 45%; font-weight: 600; color: #1a252f; }
+        .word-cell { width: 35%; font-weight: 600; color: #1a252f; }
         
         /* Badges */
         .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; color: white; text-transform: uppercase; display: inline-block; }
         .ban { background: #e74c3c; } .delete { background: #f39c12; }
         .global { background: #27ae60; } .specific { background: #3498db; }
+        .whitelist-badge { background: var(--purple); }
         
         /* Login Overlay */
         #loginOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 9999; }
@@ -75,16 +76,18 @@
                 <label class="filter-item"><input type="checkbox" id="filterBan" onchange="handleSearch()"> Autoban</label>
                 <label class="filter-item"><input type="checkbox" id="filterDel" onchange="handleSearch()"> Autodelete</label>
                 <label class="filter-item"><input type="checkbox" id="filterSpec" onchange="handleSearch()"> Specific Channels</label>
+                <label class="filter-item"><input type="checkbox" id="filterWL" onchange="handleSearch()"> Whitelisted</label>
             </div>
         </div>
 
         <table id="wordTable">
             <thead>
                 <tr>
-                    <th style="width: 45%;">Word/Phrase</th>
-                    <th style="width: 15%;">Action</th>
-                    <th style="width: 20%;">Scope</th>
-                    <th style="width: 20%;">Details</th>
+                    <th style="width: 35%;">Word/Phrase</th>
+                    <th style="width: 10%;">Action</th>
+                    <th style="width: 15%;">Scope</th>
+                    <th style="width: 20%;">Exemptions</th>
+                    <th style="width: 20%;">Blocked Details</th>
                 </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -106,7 +109,7 @@
         let allData = [];      // The full list from Gist
         let filteredData = []; // The list after searching/filtering
         let currentPage = 1;
-        const ITEMS_PER_PAGE = 50; // Keeps browser fast
+        const ITEMS_PER_PAGE = 50; 
 
         // --- AUTHENTICATION ---
         function checkAuth() {
@@ -139,48 +142,44 @@
                     throw new Error("Gist file 'banned_words.json' not found.");
                 }
 
-                // Parse and Store
                 allData = JSON.parse(data.files['banned_words.json'].content);
-                filteredData = [...allData]; // Initially, filtered is same as all
+                filteredData = [...allData]; 
                 
                 stats.innerText = `✅ Connected | ${allData.length} total entries`;
-                renderTable(); // Initial Render
+                renderTable(); 
             } catch (err) {
                 stats.innerHTML = '❌ <span style="color:red">Connection Failed. Check Gist Filename & ID.</span>';
                 console.error(err);
             }
         }
 
-        // --- FILTERING LOGIC (The Fast Part) ---
+        // --- FILTERING LOGIC ---
         function handleSearch() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const showOnlyBan = document.getElementById('filterBan').checked;
             const showOnlyDel = document.getElementById('filterDel').checked;
             const showOnlySpec = document.getElementById('filterSpec').checked;
+            const showOnlyWL = document.getElementById('filterWL').checked;
 
-            // Filter the Javascript Array (Fast), NOT the DOM (Slow)
             filteredData = allData.filter(entry => {
                 const text = (entry.phrase && entry.phrase.length > 0 
                     ? `${entry.word} ${entry.phrase.join(' ')}` 
                     : entry.word).toLowerCase();
                 
-                // 1. Text Search
                 if (!text.includes(searchTerm)) return false;
 
-                // 2. Checkbox Filters
                 if (showOnlyBan && !entry.autoBan) return false;
                 if (showOnlyDel && entry.autoBan) return false;
                 if (showOnlySpec && entry.global) return false;
+                if (showOnlyWL && (!entry.whitelistedChannels || entry.whitelistedChannels.length === 0)) return false;
 
                 return true;
             });
 
-            // Reset to page 1 whenever filters change
             currentPage = 1;
             renderTable();
         }
 
-        // --- PAGINATION LOGIC ---
         function changePage(direction) {
             const maxPage = Math.ceil(filteredData.length / ITEMS_PER_PAGE) || 1;
             const newPage = currentPage + direction;
@@ -188,7 +187,6 @@
             if (newPage >= 1 && newPage <= maxPage) {
                 currentPage = newPage;
                 renderTable();
-                // Scroll to top of table
                 document.querySelector('.container').scrollIntoView({ behavior: 'smooth' });
             }
         }
@@ -200,36 +198,40 @@
             const prevBtn = document.getElementById('prevBtn');
             const nextBtn = document.getElementById('nextBtn');
 
-            // 1. Calculate Slice
             const start = (currentPage - 1) * ITEMS_PER_PAGE;
             const end = start + ITEMS_PER_PAGE;
             const pageData = filteredData.slice(start, end);
 
-            // 2. Handle Empty State
             if (pageData.length === 0) {
-                body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:30px; color:#95a5a6;">No matches found.</td></tr>';
+                body.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:30px; color:#95a5a6;">No matches found.</td></tr>';
                 pageInfo.innerText = "Page 0 of 0";
                 prevBtn.disabled = true;
                 nextBtn.disabled = true;
                 return;
             }
 
-            // 3. Generate HTML
             body.innerHTML = pageData.map(entry => {
                 const display = entry.phrase && entry.phrase.length > 0 ? `${entry.word} ${entry.phrase.join(' ')}` : entry.word;
                 const isBan = entry.autoBan;
                 const isGlobal = entry.global;
+                const wlCount = entry.whitelistedChannels ? entry.whitelistedChannels.length : 0;
 
                 return `
                     <tr>
                         <td class="word-cell" title="${display}">${display}</td>
                         <td><span class="badge ${isBan ? 'ban' : 'delete'}">${isBan ? 'Ban' : 'Del'}</span></td>
                         <td><span class="badge ${isGlobal ? 'global' : 'specific'}">${isGlobal ? 'Global' : 'Specific'}</span></td>
-                        <td style="font-size:11px; color:#95a5a6;">${isGlobal ? 'All Channels' : (entry.blockedChannels.length + ' Channels')}</td>
+                        <td>
+                            ${wlCount > 0 
+                                ? `<span class="badge whitelist-badge">ALLOWED IN ${wlCount} CH</span>` 
+                                : `<span style="color:#bdc3c7; font-size:11px;">NO EXEMPTIONS</span>`}
+                        </td>
+                        <td style="font-size:11px; color:#95a5a6;">
+                            ${isGlobal ? 'All Channels' : (entry.blockedChannels ? entry.blockedChannels.length : 0) + ' Blocked'}
+                        </td>
                     </tr>`;
             }).join('');
 
-            // 4. Update Controls
             const maxPage = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
             pageInfo.innerText = `Page ${currentPage} of ${maxPage}`;
             prevBtn.disabled = currentPage === 1;
