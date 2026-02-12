@@ -1,0 +1,14 @@
+name: Update Gist from Web
+on:
+  repository_dispatch:
+    types: [add_link]
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run Update Script
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          NEW_ENTRY: ${{ github.event.client_payload.data }}
+        run: python update_gist.py
