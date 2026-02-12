@@ -10,5 +10,5 @@ jobs:
       - name: Run Update Script
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-          NEW_ENTRY: ${{ github.event.client_payload.data }}
+          NEW_ENTRY: "${{ github.event.client_payload.data }}"
         run: python update_gist.py
